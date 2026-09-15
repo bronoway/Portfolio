@@ -85,14 +85,23 @@ function updateParallaxLayers() {
   const scrollOffset = window.scrollY * 0.32;
   document.documentElement.style.setProperty('--grid-parallax-y', `${scrollOffset}px`);
 
-  parallaxSections.forEach(section => {
+  // Read every section's layout position FIRST, before writing anything.
+  // Interleaving reads and writes per-section (as before) forces the
+  // browser to recalculate layout on every single iteration, since each
+  // write invalidates the layout the next read needs — that forced
+  // "layout thrashing" was a real contributor to scroll jank. Batching
+  // all reads, then all writes, means the browser only has to lay things
+  // out once per frame.
+  const viewportCenter = window.innerHeight / 2;
+  const shifts = parallaxSections.map(section => {
     const sectionRect = section.getBoundingClientRect();
     const sectionCenter = sectionRect.top + sectionRect.height / 2;
-    const viewportCenter = window.innerHeight / 2;
     const distanceFromCenter = viewportCenter - sectionCenter;
-    const sectionShift = Math.max(-72, Math.min(72, distanceFromCenter * 0.12));
     const contentShift = Math.max(-54, Math.min(54, distanceFromCenter * -0.1));
-    section.style.setProperty('--section-grid-y', `${sectionShift}px`);
+    return { section, contentShift };
+  });
+
+  shifts.forEach(({ section, contentShift }) => {
     section.style.setProperty('--content-parallax-y', `${contentShift}px`);
   });
 }
@@ -386,10 +395,8 @@ if (pointerQuery.matches && !reducedMotionQuery.matches) {
     dotPosition.y = lerp(dotPosition.y, mousePosition.y, DOT_SMOOTHNESS);
     ringPosition.x = lerp(ringPosition.x, mousePosition.x, RING_SMOOTHNESS);
     ringPosition.y = lerp(ringPosition.y, mousePosition.y, RING_SMOOTHNESS);
-    dot.style.left = `${dotPosition.x}px`;
-    dot.style.top = `${dotPosition.y}px`;
-    ring.style.left = `${ringPosition.x}px`;
-    ring.style.top = `${ringPosition.y}px`;
+    dot.style.transform = `translate3d(${dotPosition.x}px, ${dotPosition.y}px, 0) translate(-50%, -50%)`;
+    ring.style.transform = `translate3d(${ringPosition.x}px, ${ringPosition.y}px, 0) translate(-50%, -50%)`;
     animationId = requestAnimationFrame(animateFollower);
   };
   animationId = requestAnimationFrame(animateFollower);
