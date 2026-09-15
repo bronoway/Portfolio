@@ -39,7 +39,7 @@ const HERO_LOGO_FADE_DISTANCE = 260;
 const HERO_LOGO_REMAINING_AT_TAGLINE = 0.85;
 const HERO_TAGLINE_UNDERLINE_DISTANCE = 120;
 const HERO_TAGLINE_FADE_DISTANCE = 180;
-const HERO_BOTTOM_BUFFER = 48;
+const HERO_BOTTOM_BUFFER = 180;
 
 function updateHero() {
   const y = window.scrollY;
@@ -59,6 +59,7 @@ function updateHero() {
   const heroMotion = -easedMotionDistance;
 
   heroLogo.style.setProperty('--logo-fade-progress', String(logoEased));
+  heroLogo.style.opacity = String(1 - taglineProgress);
   heroLogo.style.transform = `translateY(calc(-50% + ${heroMotion}px))`;
   heroTaglineFrame.style.top = `calc(50% + ${heroMotion}px)`;
   heroTaglineFrame.style.opacity = taglineProgress > 0 ? String(1 - taglineFadeProgress) : '0';
@@ -66,12 +67,38 @@ function updateHero() {
   heroTagline.style.setProperty('--tagline-wipe-progress', String(taglineProgress));
   heroTagline.querySelector('.hero-tagline-serif').style.setProperty('--alive-underline-progress', String(underlineProgress));
   heroTagline.querySelector('.hero-tagline-serif').style.setProperty('--alive-underline-opacity', underlineProgress > 0 ? '1' : '0');
+  heroTagline.querySelector('.hero-tagline-serif').style.setProperty('--alive-glow-progress', String(underlineProgress));
+  heroTagline.querySelector('.hero-tagline-serif').style.setProperty('--alive-glow-opacity', String(underlineProgress * 0.42));
+  heroTaglineFrame.style.setProperty('--marquee-opacity', String(underlineProgress * 0.72));
   heroTagline.style.setProperty('--tagline-wipe-clearance', `${(1 - taglineProgress) * 28}px`);
   const cueProgress = Math.min(y / taglineStart, 1);
   const cueOpacity = 1 - cueProgress;
   scrollCue.style.opacity = scrollCue.classList.contains('is-ready') ? String(cueOpacity) : '0';
 }
+scrollCue.addEventListener('click', () => {
+  document.getElementById('about').scrollIntoView({ behavior: 'smooth' });
+});
+
+const parallaxSections = [...document.querySelectorAll('.section')];
+
+function updateParallaxLayers() {
+  const scrollOffset = window.scrollY * 0.32;
+  document.documentElement.style.setProperty('--grid-parallax-y', `${scrollOffset}px`);
+
+  parallaxSections.forEach(section => {
+    const sectionRect = section.getBoundingClientRect();
+    const sectionCenter = sectionRect.top + sectionRect.height / 2;
+    const viewportCenter = window.innerHeight / 2;
+    const distanceFromCenter = viewportCenter - sectionCenter;
+    const sectionShift = Math.max(-72, Math.min(72, distanceFromCenter * 0.12));
+    const contentShift = Math.max(-54, Math.min(54, distanceFromCenter * -0.1));
+    section.style.setProperty('--section-grid-y', `${sectionShift}px`);
+    section.style.setProperty('--content-parallax-y', `${contentShift}px`);
+  });
+}
+
 updateHero();
+updateParallaxLayers();
 
 // ---------------------------------------------------------
 // 3. Scroll-triggered reveal for About / Work / Contact
@@ -154,6 +181,7 @@ function onScroll() {
   scrollTicking = true;
   requestAnimationFrame(() => {
     updateHero();
+    updateParallaxLayers();
     updateNavFade();
     scrollTicking = false;
   });
@@ -259,3 +287,77 @@ const navObserver = new IntersectionObserver((entries) => {
 }, { rootMargin: '-45% 0px -45% 0px' });
 
 sections.forEach(s => navObserver.observe(s));
+
+// Desktop-only smooth follower: the layer never captures input, so links and
+// controls keep their native pointer behavior underneath it.
+const pointerQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
+const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+if (pointerQuery.matches && !reducedMotionQuery.matches) {
+  const follower = document.createElement('div');
+  follower.className = 'smooth-follower';
+  follower.innerHTML = '<div class="smooth-follower-dot"></div><div class="smooth-follower-ring"></div>';
+  document.body.appendChild(follower);
+
+  const dot = follower.querySelector('.smooth-follower-dot');
+  const ring = follower.querySelector('.smooth-follower-ring');
+  const mousePosition = { x: 0, y: 0 };
+  const dotPosition = { x: 0, y: 0 };
+  const ringPosition = { x: 0, y: 0 };
+  const DOT_SMOOTHNESS = 0.2;
+  const RING_SMOOTHNESS = 0.1;
+
+  const handleMouseMove = event => {
+    mousePosition.x = event.clientX;
+    mousePosition.y = event.clientY;
+    follower.classList.add('is-visible');
+  };
+  const handleMouseEnter = () => follower.classList.add('is-hovering');
+  const handleMouseLeave = () => follower.classList.remove('is-hovering');
+  const handlePageLeave = () => {
+    follower.classList.remove('is-visible');
+    follower.classList.remove('is-hovering');
+  };
+  const interactiveElements = document.querySelectorAll('a, button, img, input, textarea, select');
+
+  window.addEventListener('mousemove', handleMouseMove, { passive: true });
+  document.documentElement.addEventListener('mouseleave', handlePageLeave);
+  interactiveElements.forEach(element => {
+    element.addEventListener('mouseenter', handleMouseEnter);
+    element.addEventListener('mouseleave', handleMouseLeave);
+  });
+
+  const lerp = (start, end, factor) => start + (end - start) * factor;
+  let animationId;
+  const animateFollower = () => {
+    dotPosition.x = lerp(dotPosition.x, mousePosition.x, DOT_SMOOTHNESS);
+    dotPosition.y = lerp(dotPosition.y, mousePosition.y, DOT_SMOOTHNESS);
+    ringPosition.x = lerp(ringPosition.x, mousePosition.x, RING_SMOOTHNESS);
+    ringPosition.y = lerp(ringPosition.y, mousePosition.y, RING_SMOOTHNESS);
+    dot.style.left = `${dotPosition.x}px`;
+    dot.style.top = `${dotPosition.y}px`;
+    ring.style.left = `${ringPosition.x}px`;
+    ring.style.top = `${ringPosition.y}px`;
+    animationId = requestAnimationFrame(animateFollower);
+  };
+  animationId = requestAnimationFrame(animateFollower);
+
+  window.addEventListener('click', event => {
+    const ripple = document.createElement('span');
+    ripple.className = 'smooth-follower-ripple';
+    ripple.style.left = `${event.clientX}px`;
+    ripple.style.top = `${event.clientY}px`;
+    follower.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
+  }, { passive: true });
+
+  window.addEventListener('beforeunload', () => {
+    window.removeEventListener('mousemove', handleMouseMove);
+    document.documentElement.removeEventListener('mouseleave', handlePageLeave);
+    interactiveElements.forEach(element => {
+      element.removeEventListener('mouseenter', handleMouseEnter);
+      element.removeEventListener('mouseleave', handleMouseLeave);
+    });
+    cancelAnimationFrame(animationId);
+  }, { once: true });
+}
