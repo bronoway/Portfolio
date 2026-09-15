@@ -584,7 +584,9 @@ ul{ list-style:none; }
   opacity:0;
   transition:opacity .25s ease;
 }
-.video-preview:hover .video-preview-player{ opacity:1; }
+.video-preview:hover .video-preview-player,
+.video-preview.is-touch-active .video-preview-player{ opacity:1; }
+.video-preview.is-touch-active .video-preview-label{ opacity:1; transform:translateY(-2px); }
 .video-preview-label{
   position:absolute; right:16px; bottom:14px;
   padding:7px 10px; border:1px solid rgba(255,255,255,0.3); border-radius:999px;

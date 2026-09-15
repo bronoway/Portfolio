@@ -204,6 +204,38 @@ function closeVideoModal() {
   videoModal.setAttribute('aria-hidden', 'true');
 }
 
+// Touch devices have no hover state, so without this, mobile visitors would
+// only ever see the static poster and never the motion preview. First tap
+// plays the preview in place (mirroring desktop hover); a second tap on an
+// already-primed card opens the full modal, same as a desktop click does.
+const isTouchDevice = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+
+async function openVideoModal(video) {
+  video.pause();
+  video.currentTime = 0;
+  const fullSrc = video.dataset.fullSrc;
+  if (!fullSrc) return;
+  videoModalPlayer.src = fullSrc;
+  videoModalPlayer.load();
+  videoModalPlayer.muted = false;
+  videoModal.classList.add('is-open');
+  videoModal.setAttribute('aria-hidden', 'false');
+  try {
+    await videoModalPlayer.play();
+  } catch (error) {
+    videoModalPlayer.controls = true;
+  }
+}
+
+const primedTouchPreviews = new Set();
+
+function resetTouchPreview(preview, video) {
+  preview.classList.remove('is-touch-active');
+  primedTouchPreviews.delete(preview);
+  video.pause();
+  video.currentTime = 0;
+}
+
 document.querySelectorAll('[data-video-preview]').forEach(preview => {
   const canvas = preview.querySelector('.video-poster');
   const video = preview.querySelector('.video-preview-player');
@@ -218,31 +250,51 @@ document.querySelectorAll('[data-video-preview]').forEach(preview => {
 
   video.addEventListener('loadeddata', drawPoster, { once: true });
   video.addEventListener('seeked', drawPoster, { once: true });
-  preview.addEventListener('mouseenter', () => {
-    video.load();
-    video.play().catch(() => {});
-  });
-  preview.addEventListener('mouseleave', () => {
-    video.pause();
-    video.currentTime = 0;
-  });
-  preview.addEventListener('click', async () => {
-    video.pause();
-    video.currentTime = 0;
-    const fullSrc = video.dataset.fullSrc;
-    if (!fullSrc) return;
-    videoModalPlayer.src = fullSrc;
-    videoModalPlayer.load();
-    videoModalPlayer.muted = false;
-    videoModal.classList.add('is-open');
-    videoModal.setAttribute('aria-hidden', 'false');
-    try {
-      await videoModalPlayer.play();
-    } catch (error) {
-      videoModalPlayer.controls = true;
-    }
-  });
+
+  if (isTouchDevice) {
+    preview.addEventListener('click', (event) => {
+      if (primedTouchPreviews.has(preview)) {
+        openVideoModal(video);
+        return;
+      }
+      event.preventDefault();
+      // Priming this card first closes any other primed preview so only
+      // one plays at a time.
+      primedTouchPreviews.forEach(otherPreview => {
+        if (otherPreview !== preview) {
+          resetTouchPreview(otherPreview, otherPreview.querySelector('.video-preview-player'));
+        }
+      });
+      preview.classList.add('is-touch-active');
+      primedTouchPreviews.add(preview);
+      video.load();
+      video.play().catch(() => {});
+    });
+  } else {
+    preview.addEventListener('mouseenter', () => {
+      video.load();
+      video.play().catch(() => {});
+    });
+    preview.addEventListener('mouseleave', () => {
+      video.pause();
+      video.currentTime = 0;
+    });
+    preview.addEventListener('click', () => openVideoModal(video));
+  }
 });
+
+if (isTouchDevice) {
+  // Tapping anywhere outside a primed preview un-primes it, so the next
+  // tap on it goes back to "play preview" instead of jumping straight
+  // to the modal.
+  document.addEventListener('click', (event) => {
+    primedTouchPreviews.forEach(preview => {
+      if (!preview.contains(event.target)) {
+        resetTouchPreview(preview, preview.querySelector('.video-preview-player'));
+      }
+    });
+  });
+}
 
 videoModalClose.addEventListener('click', closeVideoModal);
 videoModal.addEventListener('click', (event) => {
